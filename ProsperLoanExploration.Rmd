@@ -1,0 +1,993 @@
+Prosper Loan Exploration by Matt Gibbons
+========================================================
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, packages}
+# install.packages("ggplot2")
+# install.packages("knitr")
+# install.packages("dplyr")
+# install.packages("lubridate")
+# install.packages("RColorBrewer")
+# install.packages("gridExtra")
+# install.packages("reshape2")
+# install.packages("GGally")
+# install.packages("scales")
+# install.packages("memisc")
+# install.packages("ggpubr")
+library(ggplot2)
+library(knitr)
+library(dplyr)
+library(lubridate)
+library(RColorBrewer)
+library(gridExtra)
+library(reshape2)
+library(GGally)
+library(scales)
+library(memisc)
+library(ggpubr)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+df <- read.csv('prosperLoanData.csv')
+```
+
+## Introduction
+
+Prosper is a 'marketplace' for loans. Like traditional lenders, it performs credit checks on would be borrowers. Unlike traditional lenders, it then lists loan applications on it's platform. Investors choose which loans they wish to fund and can invest anything from 25 USD to the full loan value. 
+
+In this report I will use exploratory data analysis to review a dataset of Propser loans from 2005 to 2014. I aim to perform a general review to better understand the portfoilio and to identify interesting areas for further analysis.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+nrow(df)
+ncol(df)
+```
+
+The dataset consists of approximately 114k loans and 81 variables. 
+
+The variables can be categorised in the following buckets: 
+(1) loan specifics (e.g. amounts, terms), 
+(2) borrower credit info (e.g. credit history and ratings), 
+(3) listing info (e.g. dates, number of investors), 
+(4) loan status (e.g. payments, fees), 
+(5) reference numbers (e.g. listing key, listing reference number). 
+
+Notes:
+Reference numbers aren't useful for analytical purposes so I will focus on the other 4.
+Most variables cover the full period, however, a small number (inc. credit ratings) cover either the period 2005 to 2009 or 2009 to 2014.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+str(df)
+```
+
+
+## Univariate Plots Section
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+df$ListingCreationDate <- as_date(df$ListingCreationDate)
+df$LoanOriginationDate <- as_date(df$LoanOriginationDate)
+ggplot(df, aes(x=LoanOriginationDate)) + geom_histogram(binwidth = 7)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+range(df$ListingCreationDate)
+```
+
+Two points stand out from the diagram above, firstly there is a gap in 2009, then a signficant volume increase in 2013.   
+
+According to Wikipedia:
+
+> "On November 26, 2008, a class action lawsuit was filed against Prosper in the Superior Court of California...The suit was brought on behalf of all loan note purchasers in Prosper's online lending platform from January 1, 2006 through October 14, 2008 and alleges that Prosper offered and sold unqualified and unregistered securities in violation of the California and federal securities laws...The lawsuit was settled July 19, 2013 for 10 million dollars paid in installments over three years." https://en.wikipedia.org/wiki/Prosper_Marketplace#Litigation 
+
+> "In July 2009, Prosper reopened their website for lending ("investing") and borrowing after having obtained SEC registration for its loans ("notes").[18] After the relaunch, bidding on loans was restricted to residents of 28 U.S. states and the District of Columbia. Borrowers may reside in any of 47 states, with residents of three states (Iowa, Maine, and North Dakota) not permitted to borrow through Prosper." https://en.wikipedia.org/wiki/Prosper_Marketplace#2009_post_SEC_relaunch
+
+So how is it that that Prosper went from being sued by it's loan note holders in 2009 to recording record investments in 2013? What changed?
+
+First let's get more familiar with the portfolio of loans.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+ggplot(df, aes(x=LoanOriginalAmount)) + geom_histogram(binwidth=100)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+head(sort(table(df$LoanOriginalAmount), decreasing=T), 10)
+```
+
+Loan amounts range from 1k to 35k and tend to be round numbers (i.e. mulitples of 1000 or 5000). The most popular amount is 4000 USD. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+ggplot(df, aes(x=Term)) + geom_bar() + scale_x_continuous(breaks = seq(12,60,12))
+```
+
+The most popular repayment term is 36 months.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+ggplot(df, aes(x=BorrowerRate)) + geom_histogram()
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+ggplot(df, aes(x=BorrowerRate)) + geom_histogram(binwidth = 0.001)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+head(sort(table(df$BorrowerRate), decreasing=T), 1)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+ggplot(df, aes(x=BorrowerRate)) + geom_histogram(binwidth = 0.001) + scale_y_log10()
+```
+
+BorrowRates range from around 0.06 to 0.35, though we also see a small number of outiers. The most popular rate is 0.3177.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+ggplot(df, aes(x=MonthlyLoanPayment)) + geom_histogram()
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+ggplot(df, aes(x=MonthlyLoanPayment)) + geom_histogram(binwidth = 0.01) + scale_x_log10()
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+ggplot(df, aes(x=MonthlyLoanPayment)) + geom_histogram(binwidth = 1) + scale_x_continuous(limits = c(-1,500))
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+df_LoanPayment0 <- subset(df, MonthlyLoanPayment == 0)
+ggplot(df_LoanPayment0, aes(x=LoanOriginationDate)) + geom_histogram() 
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+head(sort(table(df$MonthlyLoanPayment), decreasing=T), 5)
+```
+
+MonthlyLoanPayments are the scheduled amounts to be paid per month. We see most around 174 USD as well as 87 USD (half of 174). Unusually, we also see many amounts of 0 occurring over time. However, as it is relevant to less than 1% of cases I will not investigate it further.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+ggplot(df, aes(x=ListingCategory..numeric.)) + geom_histogram(binwidth=1) + scale_x_continuous(breaks = seq(0, 20, 1))
+```
+
+ListingCategories included: 
+  1 - Debt Consolidation
+  0 - Not Available
+  7 - Other
+  2 - Home Improvement
+  3 - Business
+  
+Debt consolidation is by far the most popular reason provided.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+emp1 <- ggplot(df, aes(x=EmploymentStatusDuration)) + geom_histogram() 
+
+emp2 <- ggplot(df, aes(x=EmploymentStatusDuration)) + geom_histogram(binwidth = 1) + scale_x_continuous(limits = c(-1,200))
+
+grid.arrange(emp1, emp2, ncol=2)
+```
+
+Employment duration is right skewed with around 1500 zero values. In otherwords, borrowers tend to have been employed for a relatively short period of time.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+
+df$IncomeRange <- factor(x = df$IncomeRange, levels = c("Not displayed", "Not employed", "$0", "$1-24,999", "$25,000-49,999", "$50,000-74,999", "$75,000-99,999", "$100,000+"))
+
+ggplot(df, aes(x=IncomeRange)) + geom_bar() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Most salaries are in the range of 25-75k USD. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+
+#create a new dateframe
+df_2 <- df
+
+#create credit rating plot for period 2005 to 2009
+df_2$ListingCreationDate2 <- ifelse(df_2$ListingCreationDate < as.Date("2009-07-15"), "pre", "post")
+df_2$CreditGrade <- factor(x = df_2$CreditGrade, levels = c("AA", "A", "B", "C", "D", "E", "HR", "NC", ""))
+df_2$ListingCreationYear <- year(df_2$ListingCreationDate)
+df_2_pre <- subset(df_2, ListingCreationDate2 == "pre")
+cr1 <- ggplot(df_2_pre, aes(x=CreditGrade)) + geom_bar()
+
+#create credit rating plot for period 2009 to 2014
+df_2$ProsperRating..Alpha. <- factor(x = df_2$ProsperRating..Alpha., levels = c("AA", "A", "B", "C", "D", "E", "HR"))
+df_2_post <- subset(df_2, ListingCreationDate2 == "post")
+cr2 <- ggplot(df_2_post, aes(x=ProsperRating..Alpha.)) + geom_bar()
+
+# plot both side by side
+grid.arrange(cr1, cr2, ncol=2)
+
+```
+
+The plots are roughly similar. For example, both have C as the most popular group and are roughly bell shaped. However, since 2009 the bell shape has become more pronounced. Centrel bands A-D are more prominent. NC, the lowest grade, has been removed and the remaining extremes  (AA and HR) are now proportionally lower than their neighbours (A and E, respectively). 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+
+cd1 <- ggplot(df, aes(x=CurrentDelinquencies)) + geom_histogram(binwidth = 1)
+
+cd2 <- ggplot(df, aes(x=CurrentDelinquencies)) + geom_histogram(binwidth = 1) + scale_y_log10() + scale_x_continuous(limits = c(-1, 42))
+
+cd3 <- ggplot(df, aes(x=DelinquenciesLast7Years)) + geom_histogram(binwidth=1)
+
+cd4 <- ggplot(df, aes(x=DelinquenciesLast7Years)) + geom_histogram(binwidth = 1) + scale_y_log10()
+
+grid.arrange(cd1, cd2, cd3, cd4, ncol=2)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+pr1 <- ggplot(df, aes(x=PublicRecordsLast12Months)) + geom_histogram()
+
+pr2 <- ggplot(df, aes(x=PublicRecordsLast12Months)) + geom_bar() + scale_x_continuous(breaks=seq(0,7,1), limits=c(-1,8))+ scale_y_log10()
+
+pr3 <- ggplot(df, aes(x=PublicRecordsLast10Years)) + geom_histogram(binwidth=1)
+
+pr4 <- ggplot(df, aes(x=PublicRecordsLast10Years)) + geom_bar() + scale_x_continuous(breaks=seq(0,16,1), limits=c(-1, 17))+ scale_y_log10()
+
+grid.arrange(pr1, pr2, pr3, pr4, ncol=2)
+
+```
+
+CurrentDelinquencies (at time of credit checks) and PublicRecordsLast12Months are close to zero. As you would expect when we look back over a longer period both the volumes increase.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+inv1 <- ggplot(df, aes(x=Investors)) + geom_histogram()
+
+inv2 <- ggplot(df, aes(x=Investors)) + geom_histogram() + scale_x_log10()
+
+grid.arrange(inv1, inv2, ncol=2)
+```
+
+Single investors are most common. Excluding such cases, the distribution of investors (on logscale10) appears normally distirbuted with a median close to 100. There are no groups larger than 1000.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+df_2$AverageInvestment <- df$LoanOriginalAmount / df$Investors
+
+ave_inv1 <- ggplot(df_2, aes(x=AverageInvestment)) + geom_histogram()
+
+ave_inv2 <- ggplot(df_2, aes(x=AverageInvestment)) + geom_histogram() + scale_x_log10()
+
+grid.arrange(ave_inv1, ave_inv2, ncol=2)
+```
+
+Given the somewhat bimodial distribution of Investor numbers it's perhaps unsurprising that we see a similar distribution of Average Investment amounts. Above we see that the most popular amounts tend to be below 100 USD and a second - and substantially lower - peak, in amounts over 10k.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=5}
+df_2$ListingPeriod <- df$LoanOriginationDate - df$ListingCreationDate
+lp1 <- ggplot(df_2, aes(x=ListingPeriod)) + geom_histogram()
+
+lp2 <- ggplot(df_2, aes(x=ListingPeriod)) + geom_histogram(binwidth = 1) + scale_x_continuous(limits = c(0,50)) 
+
+lp3 <- ggplot(df_2, aes(x=ListingPeriod)) + geom_histogram() + scale_y_log10() + scale_x_continuous(limits=c(0,1000))
+
+grid.arrange(lp1, lp2, lp3, ncol=1)
+```
+
+Many loans are listed for fewer than 10, most fewer than 20 days though some go close to 1000 days.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+ggplot(df_2, aes(x=ListingCreationDate, y=LoanOriginationDate)) + geom_point()
+```
+
+In the diagram we see a block seperated from the main line. The block contains loans listed in 2007 and 2008, that were originated between 2009 and 2011. These two to three year listing periods shows that the extreme listing periods we saw previously (upto 1000 days) are a consequence of the issues around 2009.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+pc1 <- ggplot(df, aes(x=PercentFunded)) + geom_histogram()
+
+pc2 <- ggplot(df, aes(x=PercentFunded)) + geom_histogram() + scale_y_log10()
+
+grid.arrange(pc1, pc2, ncol=2)
+```
+
+The vast majority of loans are funded 100%, though we also see small numbers in the range from 70% to just above 100%. 
+
+The main take away is that portfolio only consists of funded loans, which begs the question do any loans that get listed not end up funded/originated? This would be important to know when considering supply and demand effects. (NB I will not answer the question within this analysis)  
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+ggplot(df_2_post, aes(x=EstimatedEffectiveYield)) + geom_histogram(binwidth = 0.01) + scale_x_continuous()
+```
+
+We see various peaks and troughs in the effective yield counts. We also see a small number of negative yields. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+cf1 <- ggplot(df, aes(x=LP_CollectionFees)) + geom_histogram()
+
+cf2 <- ggplot(df, aes(x=-LP_CollectionFees)) + geom_histogram(binwidth=0.01) + scale_x_log10()
+
+grid.arrange(cf1, cf2, ncol=2)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+np1 <- ggplot(df, aes(x=LP_NetPrincipalLoss)) + geom_histogram()
+
+np2 <- ggplot(df, aes(x=LP_NetPrincipalLoss)) + geom_histogram(binwidth = 0.01) + scale_x_log10()
+
+grid.arrange(np1, np2, ncol=2)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=5}
+
+sf1 <- ggplot(df, aes(x=-LP_ServiceFees)) + geom_histogram()
+
+sf2 <- ggplot(df, aes(x=-LP_ServiceFees)) + geom_histogram(binwidth = 1) + scale_x_continuous(limits = c(-1, 200))
+
+sf3 <- ggplot(df, aes(x=-LP_ServiceFees)) + geom_histogram() + scale_x_log10()
+
+grid.arrange(sf1, sf2, sf3, ncol=1)
+```
+
+LP_ServiceFees, LP_NetPrincipalLosses and LP_CollectionFees share similar distributions with modes of 0 and roughly normal distributions on log10 scale.
+
+The 0 values for LP_NetPrincipalLosses and LP_CollectionFees make sense if most loans are repaid on time. 
+
+It's not immediately clear to me though why there would be so many 0 values for service fees, however. To my understanding service fees are applied to all loans.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+df_ServiceFees0 <- subset(df, LP_ServiceFees == 0)
+ggplot(df_ServiceFees0, aes(x=LoanOriginationDate)) + geom_histogram() 
+```
+
+The majority of loans with 0 service fees are from the most recent period. Does this reflect a recent change in policy or is there a delay in applying the service fees?  
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+ggplot(df, aes(x=LoanStatus)) + geom_bar() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Most loans are completed or current but we also see close to 20k loans that were defaulted or chargedoff.
+
+## Univariate Analysis
+
+### What is the structure of your dataset?
+
+The dataset has around 114k loans and 81 variables.
+
+The variables are split into 4 main categories:
+
+(1) Loan specific 
+Amounts range from 1k to 35k and tend to be multiples of 1 or 5k. The most popular loan amount is 4000 USD. Terms are mainly 36 months and the most common monthly Payments are around 174 USD. Borrow rates range from around 0.06 to 0.35, with 0.3177 the most frequent. Loans tend to be for debt consolidation. 
+
+(2) Borrower credit info
+Employment duration is right skewed with around 1500 zero values, implying that many borrowers have only been employed for a relatively short period of time. This seems to fit with laons being for debt consolidation. Most salaries are in the range of 25-75k USD. The vast majority of borrowers have a good recent credit history.
+
+(3) Listing info
+We see two distinct groups. Many loans are funded by one investor though most are funded by more. Using log scale 10 we see the distribution of investors is approximately normally distributed with a median close to 100.
+
+(4) Loan status
+Most loans are completed or current but we also see close to 20k loans that were defaulted or chargedoff.
+
+### What is/are the main feature(s) of interest in your dataset?
+
+The main features of the dataset that I'm interested in are the volume and value of loans, i.e. the supply and demand for loans.
+
+Looking at loan volume we've already seen several major events, namely, the suspension and reboot of the platform and the recent surge in lending. 
+
+I want to see how loan value of the portfolio has changed over time and to better understand what might be driving changes.
+
+### What other features in the dataset do you think will help support your \ investigation into your feature(s) of interest?
+
+Since the reboot, the distribution of loans across credit grades has become more condensed and bell shaped. 
+
+Post reboot changes in credit policy are perhaps unsurprising given that legal action alleged "that Prosper offered and sold unqualified and unregistered securities". 
+
+However, I want to have a closer look to see exactly what changed and to evaluate if the changes helped create the 2013 volume surge. 
+
+### Did you create any new variables from existing variables in the dataset?
+
+Average investment = LoanOriginalAmount / Investors
+Listing period = LoanOriginationDate - ListingCreationDate
+
+### Of the features you investigated, were there any unusual distributions? \ Did you perform any operations on the data to tidy, adjust, or change the form \ of the data? If so, why did you do this?
+
+N/A
+
+## Bivariate Plots Section
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+df_2_bydate <- df_2 %>%
+  group_by(ListingCreationDate) %>%
+  summarise(LoanOriginalAmount_sum = sum(LoanOriginalAmount),
+            LoanOriginalAmount_mean = mean(LoanOriginalAmount),
+            Term_mean = mean(Term),
+            EstimatedLoss_sum = sum(EstimatedLoss),
+            EstimatedLoss_mean = mean(EstimatedLoss),
+            EstimatedReturn_sum = sum(EstimatedReturn),
+            EstimatedReturn_mean = mean(EstimatedReturn),
+            EmploymentStatusDuration_mean = mean(EmploymentStatusDuration),
+            CreditScoreRangeLower_mean = mean(CreditScoreRangeLower),
+            CreditScoreRangeUpper_mean = mean(CreditScoreRangeUpper),
+            OpenCreditLines_sum = sum(OpenCreditLines),
+            OpenCreditLines_mean = mean(OpenCreditLines),
+            TotalInquiries_sum = sum(TotalInquiries),
+            TotalInquiries_mean = mean(TotalInquiries),
+            CurrentDelinquencies_sum = sum(CurrentDelinquencies),
+            CurrentDelinquencies_mean = mean(CurrentDelinquencies),
+            DelinquenciesLast7Years_sum = sum(DelinquenciesLast7Years),
+            DelinquenciesLast7Years_mean = mean(DelinquenciesLast7Years),
+            PublicRecordsLast12Months_sum = sum(PublicRecordsLast12Months),
+            PublicRecordsLast12Months_mean = mean(PublicRecordsLast12Months),
+            PublicRecordsLast10Years_sum = sum(PublicRecordsLast10Years),
+            PublicRecordsLast10Years_mean = mean(PublicRecordsLast10Years),
+            RevolvingCreditBalance_sum = sum(RevolvingCreditBalance),
+            RevolvingCreditBalance_mean = mean(RevolvingCreditBalance),
+            BankcardUtilization_mean = mean(BankcardUtilization),
+            AvailableBankcardCredit_mean = mean(AvailableBankcardCredit),
+            DebtToIncomeRatio_mean = mean(DebtToIncomeRatio),
+            ProsperPrincipalBorrowed_sum = sum(ProsperPrincipalBorrowed),
+            ProsperPrincipalBorrowed_mean = mean(ProsperPrincipalBorrowed),
+            LoanOriginalAmount_sum = sum(LoanOriginalAmount),
+            LoanOriginalAmount_mean = mean(LoanOriginalAmount),
+            MonthlyLoanPayment_sum = sum(MonthlyLoanPayment),
+            LP_CustomerPayments_sum = sum(LP_CustomerPayments),
+            LP_CustomerPayments_mean = mean(LP_CustomerPayments),
+            LP_CustomerPrincipalPayments_sum = sum(LP_CustomerPrincipalPayments),
+            LP_CustomerPrincipalPayments_mean = mean(LP_CustomerPrincipalPayments),
+            LP_InterestandFees_sum = sum(LP_InterestandFees),
+            LP_InterestandFees_mean = mean(LP_InterestandFees),
+            LP_ServiceFees_sum = sum(LP_ServiceFees),
+            LP_ServiceFees_mean = mean(LP_ServiceFees),
+            LP_CollectionFees_sum = sum(LP_CollectionFees),
+            LP_CollectionFees_mean = mean(LP_CollectionFees),
+            LP_GrossPrincipalLoss_sum = sum(LP_GrossPrincipalLoss),
+            LP_GrossPrincipalLoss_mean = mean(LP_GrossPrincipalLoss),
+            LP_NetPrincipalLoss_sum = sum(LP_NetPrincipalLoss),
+            LP_NetPrincipalLoss_mean = mean(LP_NetPrincipalLoss),
+            LP_NonPrincipalRecoverypayments_sum = sum(LP_NonPrincipalRecoverypayments),
+            PercentFunded_mean = mean(PercentFunded),
+            Investors_sum = sum(Investors),
+            Investors_mean = mean(Investors),
+            ListingPeriod_mean = mean(ListingPeriod),
+            AverageInvestment_mean = mean(AverageInvestment),
+            InvestmentFromFriendsAmount_sum = sum(InvestmentFromFriendsAmount),
+            n = n ()) %>%
+  arrange(ListingCreationDate)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+s1 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=LoanOriginalAmount_sum)) + geom_line()
+
+s2 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=LoanOriginalAmount_sum)) + geom_smooth()
+
+m1 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=LoanOriginalAmount_mean)) + geom_line()
+
+m2 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=LoanOriginalAmount_mean)) + geom_smooth()
+
+grid.arrange(s1, s2, m1, m2, ncol=2)
+```
+
+Both the total and mean value of loans have increased over time. The mean increase is gradual, where as the total value changes suddenly around the start of 2013.Given the steady rise in the mean, the sudden rise in the total must be mainly driven by the volume increase noted previously. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+ggplot(df_2, aes(x=factor(Term), y=LoanOriginalAmount)) + geom_boxplot()
+```
+
+Longer term loans have, on average, higher values. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+tl1 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=Term_mean)) + geom_line()
+
+tl2 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=Term_mean)) + geom_smooth()
+
+grid.arrange(tl1, tl2, ncol=2)
+```
+
+Average term length increased between 2010 and 2013, since when it fell back slightly.  
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+ggplot(df_2, aes(x=LoanOriginationDate)) + geom_histogram() + facet_wrap(~Term)
+```
+
+36 month terms appear to be the only option until 2010. Since when 60 month terms have been growing in popularity, which explains why the average term length increased between 2010 and 2013.  
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+ggplot(df_2_bydate, aes(x=ListingCreationDate, y=PercentFunded_mean)) + geom_line()
+```
+
+The plot shows that percent funded dropped below 100% during 2011 and again at the end of 2012, since when it has returned to full suggesting that this option may have been removed.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+ggplot(df_2_bydate, aes(x=ListingCreationDate, y=EmploymentStatusDuration_mean)) + geom_line()
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+ggplot(df_2, aes(x=ListingCreationDate)) + geom_histogram() + facet_wrap(~EmploymentStatus)
+```
+
+2013 growth is clearly amongst employed borrowers.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+ggplot(df_2, aes(x=ListingCreationDate)) + geom_histogram() + facet_wrap(~IncomeRange)
+```
+
+The top 4 salary bands show significant growth during 2013. Band 50 - 75k the largest increase.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+cdm1 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=CurrentDelinquencies_mean)) + geom_line()
+
+cdm2 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=CurrentDelinquencies_mean)) + geom_smooth()
+
+pdm1 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=DelinquenciesLast7Years_mean)) + geom_line()
+
+pdm2 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=DelinquenciesLast7Years_mean)) + geom_smooth()
+
+grid.arrange(cdm1, cdm2, pdm1, pdm2, ncol=2)
+```
+
+Mean 'current delinquencies' and 'delinquencies in last 7 years' are clearly lower since the reboot and indeed were improving already before that time. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+prm1 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=PublicRecordsLast12Months_mean)) + geom_line()
+
+prm2 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=PublicRecordsLast12Months_mean)) + geom_smooth()
+
+prm3 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=PublicRecordsLast10Years_mean)) + geom_line()
+
+prm4 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=PublicRecordsLast10Years_mean)) + geom_smooth()
+
+grid.arrange(prm1, prm2, prm3, prm4, ncol=2)
+
+```
+
+Mean 'public records in the last 12 months' and 'public records during the last 10 years' have also generally improved over time, though we see some softening of restrictions over the last few years with regards to the latter.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+inv3 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=Investors_sum)) + geom_line()
+
+inv4 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=Investors_sum)) + geom_smooth()
+
+grid.arrange(inv3, inv4, ncol=2)
+```
+
+This is interesting. Despite the surge in loan volumes, the total number of investors associated with loans actually dropped during 2013. Note: we don't have information on individual investors so we can't say for certain if the number of investors dropped. It maybe that there are actually more investors that are transacting less frequently. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+
+inv_m <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=Investors_mean)) + geom_line()
+
+inv_ms <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=Investors_mean)) + geom_smooth()
+
+ave_inv3 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=AverageInvestment_mean)) + geom_line()
+
+ave_inv3s <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=AverageInvestment_mean)) + geom_smooth()
+
+grid.arrange(inv_m, inv_ms, ave_inv3, ave_inv3s, ncol=2)
+```
+
+The average number of investors per loan dropped during 2013, meanwhile, the average amount per investor increased sharply.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3} 
+
+df_2$Investors.bucket <- cut(df_2$Investors,
+                             c(0, 1, 40, 110, 1000))
+
+ggplot(df_2, aes(x=Investors.bucket)) + geom_bar()
+```
+
+Groups of 1, 2-40, 41-110 and 111-1000 investors are approximately equal in loan volume over complete period.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+
+df_2$LoanOriginationYear <- year(df_2$LoanOriginationDate)
+
+ggplot(df_2, aes(x=Investors.bucket)) + geom_bar() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  facet_wrap(~LoanOriginationYear) 
+```
+
+Over time, however, we see investor group volumes vary significantly. For example, single investors were the lowest volume group in all but 2013 and 2014, however, in those two years they've been significantly larger than the other groups. (Note: we only have 1 quarter of data from 2014).  
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+
+ggplot(df_2_post, aes(x=ListingCreationDate)) + geom_histogram() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  facet_wrap(~ProsperRating..Alpha.)
+```
+
+We observe clear spikes in the volume of laons listed in 2013/4 in risk categories A, B and particularly C. 
+
+Does this represent a significant increase in the supply and / or demand for loans? 
+- It would be interesting to know if there were any significant volumes of loans prior to 2013 that weren't originated. 
+- Also it would be interesting to have information on loans that didn't make it through credit screening to see whether the standards applied have changed over time.
+- That said we can also look at indicators within the data set to try to answer the question. For example, 'service fee' is applied to investors and is therefore roughly equivalent to price. Also we can take a closer look at credit indicators (such as debt to equity ratio) to see how it's relationship with credit grades has changed over time. Given the recent surge in volumes we might expect to see some softening. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=7}
+
+SF1 <-ggplot(df_2_bydate, aes(x=ListingCreationDate, y=LP_ServiceFees_sum)) + geom_line()
+
+SF2 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=LP_ServiceFees_sum)) + geom_smooth()
+
+SF3 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=LP_ServiceFees_mean)) + geom_line()
+
+SF4 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=LP_ServiceFees_mean)) + geom_smooth()
+
+grid.arrange(SF1, SF2, SF3, SF4, ncol=2)
+
+```
+
+This is interesting. 'Service fees' dropped sharply on both mean and total level during 2013. The only other time that mean fees dropped was just prior to the suspension of trading which suggests at least that recent reductions mark a substantial change in strategy. Also this might provide a demand based rational for the sudden increase in loan volumes during 2013.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+cfm1 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=-LP_CollectionFees_mean)) + geom_line() + scale_y_log10()
+
+cfm2 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=-LP_CollectionFees_mean)) + geom_smooth() + scale_y_log10()
+  
+cfs1 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=-LP_CollectionFees_sum)) + geom_line() + scale_y_log10()
+  
+cfs2 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=-LP_CollectionFees_sum)) + geom_smooth() + scale_y_log10()
+  
+grid.arrange(cfs1, cfs2, cfm1, cfm2, ncol=2)
+```
+
+Collection fees have dropped on both sum and mean level since around 2012. This maybe the effect of improved credit scoring, though it's also possible that there is a time delay as many loans originated in this period are still open.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+gplm1 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=LP_GrossPrincipalLoss_mean)) + geom_line()
+
+gplm2 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=LP_GrossPrincipalLoss_mean)) + geom_smooth()
+
+gpls1 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=LP_GrossPrincipalLoss_sum)) + geom_line()
+
+gpls2 <- ggplot(df_2_bydate, aes(x=ListingCreationDate, y=LP_GrossPrincipalLoss_sum)) + geom_smooth()
+  
+grid.arrange(gplm1, gplm2, gpls1, gpls2, ncol=2)
+```
+
+Net principal losses have improved remarkably over the last 2 years on both mean and sum level. Again this maybe the effect of improved credit scoring, though it's also possible that there is a time delay as many loans originated in this period are still open.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+
+df_2$ClosedDate <- as_date(df_2$ClosedDate)
+
+df_2_closed <- subset(df_2, ClosedDate > 0)
+
+ggplot(df_2_closed, aes(x=ListingCreationDate)) + geom_histogram() + facet_wrap(~LoanStatus)
+```
+
+Here we see that defaults and chargeoffs are lower during the last few years, though so too are the amount of completed loans. Recall that we saw in section 1 that over 50k loans are currently open.
+
+## Bivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the \ investigation. How did the feature(s) of interest vary with other features in \ the dataset?
+
+In section 1 we saw that loan volumes increased sharply in 2013. In section 2 we've seen that the same is also true for overall loan value. Additionally we saw that mean loan value is increasing but at a less pronounced rate.
+
+In otherwords, the value of loans on the portfolio rose sharply during 2013, driven mainly by increased volume and to a lesser degree higher avarege loans.
+
+### Did you observe any interesting relationships between the other features \ (not the main feature(s) of interest)?
+
+We've seen further evidence that credit indicators have been improving steadily over time. In addition to the higher volume of loans in grades A to C that we saw in section 1, we've seen increases in loans to borrowers with higher salaries and fewer delinquencies and public records. However, given the sharp rise in loans we need to look 'under the hood' to be sure that there hasn't been a recent softening of credit indicators.
+
+### What was the strongest relationship you found?
+
+Service fees reductions and a sudden influx of 'individual' investors are the strongest indicators as to why volumes have risen.
+
+The main factor contributing to the steady rise in mean loan amounts appears to be the introduction of longer term and, on average, higher value loans.
+
+## Multivariate Plots Section
+
+```{r echo=FALSE, Multivariate_Plots}
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+
+# create a column combining CreditGrade and ProsperRatingAlpha
+
+x <- c("AA", "A", "B", "C", "D", "E", "HR", "NC")
+
+df_2$CreditGradeCombined <- if_else(df_2$CreditGrade %in% x, df_2$CreditGrade, df_2$ProsperRating..Alpha.)
+
+# create summary statistics for credit indicators overtime
+
+df_2_cr <- subset(df_2, !is.na(df_2$CreditGradeCombined))
+
+df_2_bydate_rating_cr2 <- df_2_cr %>%
+  group_by(ListingCreationDate, CreditGradeCombined) %>%
+  summarise(CreditScoreRangeLower_mean = mean(CreditScoreRangeLower),
+            CreditScoreRangeUpper_mean = mean(CreditScoreRangeUpper),
+            DebtToIncomeRatio_mean = mean(DebtToIncomeRatio), 
+            StatedMonthlyIncome_mean = mean(StatedMonthlyIncome),
+            EmploymentStatusDuration_mean = mean(EmploymentStatusDuration),
+            CurrentDelinquencies_mean = mean(CurrentDelinquencies),
+            AmountDelinquent_mean = mean(AmountDelinquent),
+            DelinquenciesLast7Years_mean = mean(DelinquenciesLast7Years),
+            PublicRecordsLast12Months_mean = mean(PublicRecordsLast12Months),
+            PublicRecordsLast10Years_mean = mean(PublicRecordsLast10Years),
+            RevolvingCreditBalance_mean = mean(RevolvingCreditBalance),
+            BankcardUtilization_mean = mean(BankcardUtilization),
+            TotalInquiries_mean = mean(TotalInquiries),
+            TotalTrades_mean = mean(TotalTrades),
+            TradesNeverDelinquent..percentage. = mean(TradesNeverDelinquent..percentage.),
+            n = n()) %>%
+  arrange(ListingCreationDate)
+
+# plot credit indicators
+
+cra_1 <- ggplot(df_2_bydate_rating_cr2, aes(x=ListingCreationDate, y=CreditScoreRangeLower_mean, color=factor(CreditGradeCombined))) + geom_smooth() + theme(legend.position="none") + labs(color = "Grade")
+
+cra_2 <- ggplot(df_2_bydate_rating_cr2, aes(x=ListingCreationDate, y=CreditScoreRangeUpper_mean, color=factor(CreditGradeCombined))) + geom_smooth() + theme(legend.position="none") + labs(color = "Grade")
+
+cra_3 <- ggplot(df_2_bydate_rating_cr2, aes(x=ListingCreationDate, y=-DebtToIncomeRatio_mean, color=factor(CreditGradeCombined))) + geom_smooth()  + theme(legend.position="none") + labs(color = "Grade")
+
+grid.arrange(cra_1, cra_2, cra_3, ncol=3)
+
+```
+
+Credit scores converged during 2009. Borrower requirements have toughened to such an extent that the lowest grades are now equivalent to the pre reboot level C.
+
+Debt to income ration - the range between the highest and lowest bands has narrowed over time. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+cra_4 <- ggplot(df_2_bydate_rating_cr2, aes(x=ListingCreationDate, y=StatedMonthlyIncome_mean, color=factor(CreditGradeCombined))) + geom_smooth() + theme(legend.position="none") + labs(color = "Grade")
+
+cra_5 <- ggplot(df_2_bydate_rating_cr2, aes(x=ListingCreationDate, y=EmploymentStatusDuration_mean, color=factor(CreditGradeCombined))) + geom_smooth() + theme(legend.position="none") + coord_cartesian(ylim=c(40,125)) + labs(color = "Grade")
+
+cra_6 <- ggplot(df_2_bydate_rating_cr2, aes(x=ListingCreationDate, y=-BankcardUtilization_mean, color=factor(CreditGradeCombined))) + geom_smooth() + theme(legend.position="none") + labs(color = "Grade")
+
+grid.arrange(cra_4, cra_5, cra_6, ncol=3)
+```
+
+Stated monthly income is roughly the same now as it was in 2006. The top level is lower and the other levels are more clearly linked to credit grade order. Between 2006 and 2010 there was a dip, possibly related to the financial crisis.  
+
+Employment status duration has steadily improved such that the lowest bands are better than where the best bands started. However, there doesn't appear to be a clear distinction by credit grade.
+
+Bankcard utilization levels have increased for all but a few of the lowest bands that are about the same as where they started. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+
+cra_7 <- ggplot(df_2_bydate_rating_cr2, aes(x=ListingCreationDate, y=-CurrentDelinquencies_mean, color=factor(CreditGradeCombined))) + geom_smooth() + theme(legend.position="none") + labs(color = "Grade")
+  
+cra_8 <- ggplot(df_2_bydate_rating_cr2, aes(x=ListingCreationDate, y=-AmountDelinquent_mean, color=factor(CreditGradeCombined))) + geom_smooth() + theme(legend.position="none") + labs(color = "Grade")
+
+cra_9 <- ggplot(df_2_bydate_rating_cr2, aes(x=ListingCreationDate, y=-DelinquenciesLast7Years_mean, color=factor(CreditGradeCombined))) + geom_smooth() + theme(legend.position="none") + labs(color = "Grade")
+
+grid.arrange(cra_7, cra_8, cra_9, ncol=3)
+```
+
+There has been a clear imporvement in the number and amounts of delinquencies at the time of the credit rating check (Current) and over the last 7 years. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+cra_10 <- ggplot(df_2_bydate_rating_cr2, aes(x=ListingCreationDate, y=-TotalInquiries_mean, color=factor(CreditGradeCombined))) + geom_smooth() + theme(legend.position="none") + labs(color = "Grade")
+
+cra_11 <- ggplot(df_2_bydate_rating_cr2, aes(x=ListingCreationDate, y=-PublicRecordsLast12Months_mean, color=factor(CreditGradeCombined))) + geom_smooth() + theme(legend.position="none") + labs(color = "Grade")
+
+cra_12 <- ggplot(df_2_bydate_rating_cr2, aes(x=ListingCreationDate, y=-PublicRecordsLast10Years_mean, color=factor(CreditGradeCombined))) + geom_smooth() + theme(legend.position="none") + labs(color = "Grade")
+
+grid.arrange(cra_10, cra_11, cra_12, ncol=3)
+
+```
+
+Similarly the mean number of total inquiries and recent public records have improved significantly.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+
+cra_13 <- ggplot(df_2_bydate_rating_cr2, aes(x=ListingCreationDate, y=RevolvingCreditBalance_mean, color=factor(CreditGradeCombined))) + geom_smooth() + theme(legend.position="none") + labs(color = "Grade")
+
+cra_14 <- ggplot(df_2_bydate_rating_cr2, aes(x=ListingCreationDate, y=TotalTrades_mean, color=factor(CreditGradeCombined))) + geom_smooth() + theme(legend.position="none") + labs(color = "Grade")
+
+cra_15 <- ggplot(df_2_bydate_rating_cr2, aes(x=ListingCreationDate, y=TradesNeverDelinquent..percentage., color=factor(CreditGradeCombined))) + geom_smooth() + theme(legend.position="none") + labs(color = "Grade")
+
+grid.arrange(cra_13, cra_14, cra_15, ncol=3)
+
+```
+
+Revolving Credit Balances appear to be higher on average as there are fewer borrowers with credit balances below 10k. However, there doesn't appear to be a clear distinction by credit grade.
+
+Total trades have generally increased. There is some distinction by credit grade as well as significant overlap.
+
+Trades never delinquent shows a clear delineation by credit grade and both min and max values have improved.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=5} 
+crm1 <- ggplot(df_2_pre, aes(x=LoanOriginalAmount, y=ListingCreationYear)) + 
+  geom_point(alpha=1/5) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_wrap(~CreditGrade)
+  
+crm2 <- ggplot(df_2_post, aes(x=LoanOriginalAmount, y=ListingCreationYear)) + 
+  geom_point(alpha=1/5) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_wrap(~ProsperRating..Alpha.)
+  
+grid.arrange(crm1, crm2, ncol=2)
+```
+
+We've already seen the distribution of loans by credit ratings becoming more bell shaped and focused on bands A to D. Above we see that over time, and particulaly since the reboot, that maximum loan amounts have become linked to credit grade and that amounts above 30k were introduced for bands AA, A and B. Though AA volumes are smaller.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3} 
+ggplot(df_2, aes(x=MonthlyLoanPayment, y=LoanOriginalAmount)) + geom_point(alpha=1/100)
+```
+
+Unsurprisingly, loan repayments relate to loan amounts. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3} 
+df_2$ListingCreationYear <- year(df_2$ListingCreationDate)
+df_2$ListingCreationDate2 <- factor(x = df_2$ListingCreationDate2, levels = c("pre", "post"))
+ggplot(df_2, aes(x=MonthlyLoanPayment, y=LoanOriginalAmount, color=factor(Term))) + geom_point() + facet_wrap(~ListingCreationDate2)
+```
+
+We also see that loan repayments relate to term length. Again this is perhaps unsurprising though the definition has become more clear since the reboot. We also see that loan amoutn above 25k were apply to terms of 36 and 50 months. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3} 
+df_2$ListingCreationYear <- year(df_2$ListingCreationDate)
+
+arm1 <- ggplot(df_2_pre, aes(x=MonthlyLoanPayment, y=LoanOriginalAmount, color=CreditGrade)) + geom_point() + 
+  scale_x_continuous(limits = c(0,2000)) +
+  scale_y_continuous(limits = c(0,35000))
+
+arm2 <- ggplot(df_2_post, aes(x=MonthlyLoanPayment, y=LoanOriginalAmount, color=ProsperRating..Alpha.)) + geom_point() + 
+  scale_x_continuous(limits = c(0,2000)) +
+  scale_y_continuous(limits = c(0,35000)) + 
+  labs(color='Alpha') 
+
+grid.arrange(arm1, arm2, ncol=2)
+```
+
+The width of the lines is explained by credit grade. Post reboot the variation by credit grade is even clearer. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=6} 
+ggplot(subset(df_2, ListingCreationDate2 == 'pre'), aes(x=BorrowerRate, y=LoanOriginalAmount, color=CreditGrade)) + geom_point() + facet_wrap(~ListingCreationYear) + scale_x_continuous(limits = c(0,0.4))
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=6} 
+ggplot(subset(df_2, ListingCreationDate2 == 'post'), aes(x=BorrowerRate, y=LoanOriginalAmount, color=ProsperRating..Alpha.)) + geom_point() + facet_wrap(~ListingCreationYear) + scale_x_continuous(limits = c(0,0.4)) + 
+  labs(color='Alpha') 
+```
+
+Borrower rates have narrowed over time and become more clearly graduated by credit rating and amount.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=6} 
+ggplot(subset(df_2, ListingCreationDate2 == 'pre'), aes(x=LenderYield, y=LoanOriginalAmount, color=CreditGrade)) + geom_point() + facet_wrap(~ListingCreationYear) + scale_x_continuous(limits = c(0,0.4))
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=6} 
+ggplot(subset(df_2, ListingCreationDate2 == 'post'), aes(x=LenderYield, y=LoanOriginalAmount, color=ProsperRating..Alpha.)) + geom_point() + facet_wrap(~ListingCreationYear) + scale_x_continuous(limits = c(0,0.4)) + 
+  labs(color='Alpha') 
+```
+
+As we've just seen with Borrower Rates, Lender Yields have narrowed over time and become more clearly graduated by credit rating and amount.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=3} 
+df_2_2013_2014 <- subset(df_2, LoanOriginationYear >= '2013' )
+ggplot(df_2_2013_2014, aes(x=ProsperRating..Alpha.)) + geom_bar() + facet_wrap(~Investors.bucket, ncol=4)
+```
+
+We see the strong preference among individual inverstors for credit ratings A-C.
+
+Most groups favour rating group C, the only exception is invester group 110 - 1000 that tends towards less risky investments, mainly A. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=7}
+
+df_2_bydate_invbuc <- df_2 %>%
+  group_by(ListingCreationDate, Investors.bucket) %>%
+  summarise(LoanOriginalAmount_sum = sum(LoanOriginalAmount),
+            LP_ServiceFees_mean = mean(LP_ServiceFees),
+            EstimatedEffectiveYield_mean = mean(EstimatedEffectiveYield),
+            LenderYield_mean = mean(LenderYield),
+            BorrowerRate_mean = mean(BorrowerRate),
+            DebtToIncomeRatio_mean = mean(DebtToIncomeRatio), 
+            StatedMonthlyIncome_mean = mean(StatedMonthlyIncome),
+            n = n()) %>%
+  arrange(ListingCreationDate)
+
+invbuc1 <- ggplot(df_2_bydate_invbuc, aes(x=ListingCreationDate, y=LP_ServiceFees_mean, color=Investors.bucket)) + geom_smooth() + facet_wrap(~Investors.bucket, ncol=1) + theme(legend.position="none")
+
+invbuc2 <- ggplot(df_2_bydate_invbuc, aes(x=ListingCreationDate, y=LoanOriginalAmount_sum, color=Investors.bucket)) + geom_smooth() + facet_wrap(~Investors.bucket, ncol=1) + theme(legend.position="none")
+
+grid.arrange(invbuc1, invbuc2, ncol=2)
+
+```
+
+Only for individuals does the recent service fee reduction appear to translate to an increase in demand. 
+
+## Multivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. Were there features that strengthened each other in terms of \
+looking at your feature(s) of interest?
+
+### Were there any interesting or surprising interactions between features?
+
+### OPTIONAL: Did you create any models with your dataset? Discuss the \
+strengths and limitations of your model.
+
+------
+
+
+## Final Plots and Summary
+
+### Plot One
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=7, fig.width=9}
+
+cra__1 <- cra_1 + ylab('Mean CSR lower') + xlab('Year')
+
+cra__2 <- cra_7 + ylab('Mean Current Del') + xlab('Year')
+
+cra__3 <- cra_10 + ylab('Mean Total Inquires') + xlab('Year')
+
+cra__4 <- cra_15 + ylab('Mean Trades Never Del') + xlab('Year')
+
+cra__5 <- cra_11 +  ylab('Mean Public Records last 12m') + xlab('Year')
+
+ggarrange(cra__1, cra__2, cra__3, cra__4, cra__5, ncol=2, nrow=3, common.legend = TRUE, legend="right") 
+
+```
+
+### Description One
+
+Note1: CreditGradeCombined is an amalgamation of CreditGrade (2005 to 2009) and ProsperRating..Alpha. (2009 to 2014). As ratings exhibit smooth lines rather than a visible join I think comparison of these variables is reasonable. 
+
+Note2: Several graphs are on a negative scale. This was done to facilitate visual appearance, so that the viewer expects to see AA at the top in all plots. 
+
+Overtime many of the credit indicators have become more focused, with narrower distances between extremes and preferences for certain levels. 
+
+The most signficant changes are in the lower levels, which are now for some indicators equivalent where to mid / upper range ratings began (e.g. public records last 12 months).
+
+Mostly the evdience suggests a raising of credit standards, however, there is also some evidence of a lowering standards at the highest levels (e.g. CreditScoreRange lower).  
+
+Regrading changes since the reboot, there is evidence of improvements around 2009 though all indicators have their low points in 2006 or 2007 so improvements appear to have been underway prior to the litigation.   
+
+### Plot Two
+```{r echo=FALSE, message=FALSE, warning=FALSE, Plot_Two, fig.height=7, fig.width=9}
+
+ggplot(subset(df_2, !is.na(CreditGradeCombined)), aes(x=LoanOriginalAmount, y=BorrowerRate, color=factor(CreditGradeCombined))) + geom_point() +
+  ggtitle("Borrower Rates by Credit Rating, Loan Amount and Year") +
+  scale_color_brewer(type = 'div', palette = 5, guide = guide_legend(title = 'Grade', ncol = 1, override.aes = list(alpha = 1, size = 4))) +
+  scale_x_continuous(breaks = seq(0,35000,5000), limits = c(0,35000)) +
+  scale_y_continuous(breaks = seq(0,0.5,0.1), limits = c(0,0.5))  +
+  theme(legend.position='right', panel.background = element_rect(fill = 'grey75'), legend.key=element_rect(fill='grey75')) +
+  facet_wrap(~factor(ListingCreationYear)) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  xlab('Year')
+
+```
+
+### Description Two
+
+Above we see the evolution borrower rates and the amounts that can be loaned per credit grade. 
+
+Roughly speaking the shape starts as a fuzzy square and ends as clearly layered steps. This speaks to the fact that initially most credit grades were entitled to loan upto the maximum 25k and rates were generally based on credit grade, though we see that there was a slight inclination suggesting that rates increased along with the loan amount. Also the credit grade rate link wasn't strictly enforced as we can see most clearly in 2008 with group AA, where red dots appear at many rates.
+
+The pattern has evolved over time but I would argue most notably since 2009 since when only grades C and above appear to have been able to lend the highest amounts. More recently loon amounts have been further restricted at the lower grades and expanded at the higher grades, though we see little volume in the AA grade. Lastly we see how little overlap there is in 2014 between credit grade borrower rates and that lines are flatter so rates stay the same as loan amounts increase.
+
+### Plot Three
+```{r echo=FALSE, message=FALSE, warning=FALSE, Plot_Three, fig.height=7, fig.width=9}
+
+df_2_groupby_inv.buc2 <- df_2_cr %>%
+  group_by(Investors.bucket, CreditGradeCombined, ListingCreationYear) %>%
+  summarise(LoanOriginalAmount_mean = mean(LoanOriginalAmount),
+            LoanOriginalAmount_sum = sum(LoanOriginalAmount),
+            n = n()) %>%
+  arrange(Investors.bucket)
+
+
+ggplot(subset(df_2_groupby_inv.buc2, !is.na(Investors.bucket)), aes(x=ListingCreationYear, y=LoanOriginalAmount_sum)) + 
+  geom_bar(aes(fill = factor(CreditGradeCombined)), position = "dodge", stat="identity") + 
+  facet_wrap(~Investors.bucket, ncol=1) +
+  scale_x_continuous(breaks = seq(2005, 2014, 1), limits = c(2005, 2014)) + 
+  scale_fill_brewer(direction = -1, palette = 8, guide = guide_legend(title = 'Grade', ncol = 1, override.aes = list(alpha = 1, size = 4))) + theme(panel.background = element_rect(fill = 'grey75'), panel.grid.major = element_line(colour = "grey75")) +
+  ggtitle("Total Loan Amount by Investor Bucket, Year and Credit Grade Combined") +
+  xlab('Year')
+
+```
+
+### Description Three
+
+Here we see clearly the sudden surge in growth loans by individual investors in 2013 and their interest mainly in ratings A to C, with a mode of C. 
+
+Large groups of small investers (bucket 111 to 1000), that have generally been the most signficiant group, also contributed to the 2013 growth but to a much smaller degree. We also see signs that these investors maybe more risk averse, with a mode of A and the highest demand of any group for AA. 
+
+Note: 2014 is only a third complete
+
+------
+
+## Reflection
+
+We saw loan volumes stop and restart in 2009, then skyrocket in 2013. We've seen how the quality of borrowers, as defined by credit indicators such as CreditScoreRange lower, have generally improved over time. I haven't yet developed a way to quantify this but I hypothesis that many borrowers at level C/D in 2005/6 would struggle to classify as E/HR in 2014. This is important for borrowers, as maximum loan amounts and rates have become clearly segmented and linked to credit ratings. I would also be interested to look at the profitability of investments by credit rating and how it has changed over time.
+
+Most surprising for me was the sudden change in investor profile during 2013. Though we don't have investor level data I believe it's reasonable to infer from loan level data that there was a sudden influx of high amount individual investors during 2013. This coincides with a sudden and severe decrease in service fees, though service fee changes at other times and for other investor groups didn't obviously impact loan volumes. I imagine that the improved credit risk situation and external factors may also be involved.
+
+I haven't looked closely at the timing of volume increases and fee decreases to confirm which is cause and effect. It would also be interesting to have more recent data to be sure that fee increases were real and not just a timing issue. I'd also like to see if the fee reductions were permanent and to try to understand how this could be substantiated from a business perspective. Perhaps it hints at efficiencies brought about by automation or a price war with competitors.  
+
+Lastly, I'm intrigued to know how the surge in volume in 2013 was balanced in terms of supply and demand. If there was a demand side increase casued by service fee reductions and/or external factors such as the state of the economy or value of other investments, how is it that the supply was able to keep up? How is it that both the quality and volume of borrowers can improve simultaneously? Was it the result of an aggressive marketing campaign? Does volumes make sense compared to website visitor traffic? Have there been significant volumes of loans that were historically listed but never originated due to lack of investors?
+
+
+------
+
+
+
+
+
+
